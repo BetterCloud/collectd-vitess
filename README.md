@@ -32,7 +32,23 @@ You should then configure the VTGate plugin:
       Port "15001"
     </Module>
   </Plugin>
-  
+
+And VTTablet Plugin:
+
+	<Plugin "python">
+    ModulePath "/usr/share/collectd/python/"
+
+    Import "vttablet_collectd"
+
+    <Module "vttablet_collectd">
+      Verbose false
+      Host "localhost"
+      Port "15101"
+    </Module>
+  </Plugin>
+
+
+
 ## Metrics Collected
 
 ### VTTablet Metrics
