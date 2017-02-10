@@ -24,9 +24,9 @@ You should then configure the MySQL plugin:
 	<Plugin "python">
     ModulePath "/usr/share/collectd/python/"
 
-    Import "vtgate"
+    Import "vtgate_collectd"
 
-    <Module "vtgate">
+    <Module "vtgate_collectd">
       Verbose false
       Host "localhost"
       Port "15001"
