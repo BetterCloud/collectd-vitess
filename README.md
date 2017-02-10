@@ -40,9 +40,9 @@ You should then configure the MySQL plugin:
       vitess.appConnPoolCapacity
       vitess.appConnPoolWaitCount
       vitess.appConnPoolAvgWaitTime
-      vitess.connPoolAvailable", json_data['ConnPoolAvailable'],'gauge', None)
-      vitess.connPoolCapacity", json_data['ConnPoolCapacity'],'gauge', None)
-      vitess.connPoolWaitCount", json_data['ConnPoolWaitCount'],'gauge', None)
+      vitess.connPoolAvailable
+      vitess.connPoolCapacity
+      vitess.connPoolWaitCount
       vitess.connPoolAvgWaitTime
       vitess.dbaConnPoolAvailable
       vitess.dbaConnPoolCapacity
