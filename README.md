@@ -19,7 +19,7 @@ If you don’t already have the Python module loaded, you need to configure it f
     	ModulePath "/path/to/python/modules"
     </Plugin>
 
-You should then configure the MySQL plugin:
+You should then configure the VTGate plugin:
 
 	<Plugin "python">
     ModulePath "/usr/share/collectd/python/"
