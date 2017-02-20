@@ -88,8 +88,8 @@ def process_data(json_data):
     util.create_metric(epoch_time, "vitess.internalErrors", json_data['InternalErrors'], TAG_LIST_2)
     util.create_metric(epoch_time, "vitess.kills", json_data['Kills'], TAG_LIST_2)
 
-    util.publish_metric(epoch_time, "vitess.mysql.totalCount", json_data['Mysql']['TotalCount'],'gauge', None)
-    util.create_metric_histogram(epoch_time, "vitess.mysql.count", json_data['Mysql'], TAG_LIST_5)
+    util.publish_metric(epoch_time, "vitess.mysql.totalCount", json_data['MySQL']['TotalCount'],'gauge', None)
+    util.create_metric_histogram(epoch_time, "vitess.mysql.count", json_data['MySQL'], TAG_LIST_5)
 
     util.publish_metric(epoch_time, "vitess.mysqlApp.totalCount", json_data['MysqlApp']['TotalCount']
                         ,'gauge', None)
