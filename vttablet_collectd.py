@@ -1,179 +1,131 @@
 #!/usr/bin/python
 
+import time
 import util
-import collectd
 
-TAG_LIST_1 = ['keyspace', 'shard', 'type']
-TAG_LIST_2 = ['type']
-TAG_LIST_3 = ['method', 'keyspace', 'shard', 'type']
-TAG_LIST_4 = ['method', 'keyspace', 'type']
-TAG_LIST_5 = ['method']
-TAG_LIST_6 = ['table', 'type']
-TAG_LIST_7 = ['table', 'plan', 'id', 'user']
-TAG_LIST_8 = ['table', 'user', 'type']
-TAG_LIST_9 = ['user', 'type']
-TAG_LIST_10 = ['table']
-TAG_LIST_11 = ['method','type']
+NAME = 'vttablet'
 
-VITESS_CONFIG = {
-    'Host':           'localhost',
-    'Port':           15001,
-}
+class Vttablet(util.BaseCollector):
+    def __init__(self, collectd, json_provider=None, verbose=False, interval=None):
+        super(Vttablet, self).__init__(collectd, NAME, 15101, json_provider, verbose, interval)
+        self.include_per_user_timings = True
+        self.include_streamlog_stats = True
+        self.include_acl_stats = True
+        self.include_results_histogram = True
+        self.include_reparent_timings = True
 
-def process_data(json_data):
-    epoch_time = util.get_epoch_time()
+    def configure_callback(self, conf):
+        super(Vttablet, self).configure_callback(conf)
+        for node in conf.children:
+            if node.key == 'IncludeResultsHistogram':
+                self.include_results_histogram = util.boolval(node.values[0])
+            elif node.key == 'IncludeTimingsPerUser':
+                self.include_per_user_timings = util.boolval(node.values[0])
+            elif node.key == 'IncludeStreamLog':
+                self.include_streamlog_stats = util.boolval(node.values[0])
+            elif node.key == 'IncludeACLStats':
+                self.include_acl_stats = util.boolval(node.values[0])
+            elif node.key == 'IncludeExternalReparentTimings':
+                self.include_reparent_timings = util.boolval(node.values[0])
 
-    util.publish_metric(epoch_time, "vitess.appConnPoolAvailable", json_data['AppConnPoolAvailable']
-                        , 'gauge', None)
-    util.publish_metric(epoch_time, "vitess.appConnPoolCapacity", json_data['AppConnPoolCapacity']
-                        , 'gauge', None)
-    util.publish_metric(epoch_time, "vitess.appConnPoolWaitCount", json_data['AppConnPoolWaitCount']
-                        , 'gauge', None)
-    if json_data['AppConnPoolWaitCount'] > 0:
-        util.publish_metric(epoch_time, "vitess.appConnPoolAvgWaitTime"
-                            , (json_data['AppConnPoolWaitTime']/1000000.0)/json_data['AppConnPoolWaitCount']
-                            , 'gauge', None)
-    else:
-        util.publish_metric(epoch_time, "vitess.appConnPoolAvgWaitTime", 0, 'gauge', None)
+        self.register_read_callback()
 
-    util.publish_metric(epoch_time, "vitess.connPoolAvailable", json_data['ConnPoolAvailable'],'gauge', None)
-    util.publish_metric(epoch_time, "vitess.connPoolCapacity", json_data['ConnPoolCapacity'],'gauge', None)
-    util.publish_metric(epoch_time, "vitess.connPoolWaitCount", json_data['ConnPoolWaitCount'],'gauge', None)
-    if json_data['ConnPoolWaitCount'] > 0:
-        util.publish_metric(epoch_time, "vitess.connPoolAvgWaitTime"
-                            , (json_data['ConnPoolWaitTime']/1000000.0)/json_data['ConnPoolWaitCount'],'gauge', None)
-    else:
-        util.publish_metric(epoch_time, "vitess.connPoolAvgWaitTime", 0,'gauge', None)
+    def process_data(self, json_data):
+        # Current connections and total accepted
+        self.process_metric(json_data, 'ConnAccepted', 'counter')
+        self.process_metric(json_data, 'ConnCount', 'gauge')
 
-    util.publish_metric(epoch_time, "vitess.dbaConnPoolAvailable", json_data['DbaConnPoolAvailable']
-                        ,'gauge', None)
-    util.publish_metric(epoch_time, "vitess.dbaConnPoolCapacity", json_data['DbaConnPoolCapacity']
-                        ,'gauge', None)
-    util.publish_metric(epoch_time, "vitess.dbaConnPoolWaitCount", json_data['DbaConnPoolWaitCount']
-                        ,'gauge', None)
-    if json_data['DbaConnPoolWaitCount'] > 0:
-        util.publish_metric(epoch_time, "vitess.dbaConnPoolAvgWaitTime"
-                            , (json_data['DbaConnPoolWaitTime']/1000000.0)/json_data['DbaConnPoolWaitCount'],'gauge', None)
-    else:
-        util.publish_metric(epoch_time, "vitess.dbaConnPoolAvgWaitTime", 0,'gauge', None)
+        # Health-related metrics.
+        # TabletState is an integer mapping to one of SERVING (2), NOT_SERVING (0, 1, 3), or SHUTTING_DOWN (4)
+        self.process_metric(json_data, 'TabletState', 'gauge')
+        self.process_metric(json_data, 'HealthcheckErrors', 'counter', parse_tags=['keyspace', 'shard', 'type'])
 
-    util.publish_metric(epoch_time, "vitess.streamConnPoolAvailable"
-                        , json_data['StreamConnPoolAvailable'],'gauge', None)
-    util.publish_metric(epoch_time, "vitess.streamConnPoolCapacity"
-                        , json_data['StreamConnPoolCapacity'],'gauge', None)
-    util.publish_metric(epoch_time, "vitess.streamConnPoolWaitCount"
-                        , json_data['StreamConnPoolWaitCount'],'gauge', None)
-    if json_data['StreamConnPoolWaitCount'] > 0:
-        util.publish_metric(epoch_time, "vitess.streamConnPoolAvgWaitTime"
-                            , (json_data['StreamConnPoolWaitTime']/1000000.0)/json_data['StreamConnPoolWaitCount'],'gauge', None)
-    else:
-        util.publish_metric(epoch_time, "vitess.streamConnPoolAvgWaitTime", 0,'gauge', None)
+        # GC Stats
+        memstats = json_data['memstats']
+        self.process_metric(memstats, 'GCCPUFraction', 'gauge', prefix='GC.', alt_name='CPUFraction')
+        self.process_metric(memstats, 'PauseTotalNs', 'gauge', prefix='GC.')
 
-    util.publish_metric(epoch_time, "vitess.transactionPoolAvailable"
-                        , json_data['TransactionPoolAvailable'],'gauge', None)
-    util.publish_metric(epoch_time, "vitess.transactionPoolCapacity"
-                        , json_data['TransactionPoolCapacity'],'gauge', None)
-    util.publish_metric(epoch_time, "vitess.transactionPoolWaitCount"
-                        , json_data['TransactionPoolWaitCount'],'gauge', None)
-    if json_data['TransactionPoolWaitCount'] > 0:
-        util.publish_metric(epoch_time, "vitess.transactionPoolAvgWaitTime"
-                            , (json_data['TransactionPoolWaitTime']/1000000.0)/json_data['TransactionPoolWaitCount'],'gauge', None)
-    else:
-        util.publish_metric(epoch_time, "vitess.transactionPoolAvgWaitTime", 0,'gauge', None)
+        # Tracking usage of the various connection pools
+        self.process_pool_data(json_data, 'Conn')
+        self.process_pool_data(json_data, 'AppConn')
+        self.process_pool_data(json_data, 'DbaConn')
+        self.process_pool_data(json_data, 'StreamConn')
+        self.process_pool_data(json_data, 'Transaction')
 
-    util.create_metric(epoch_time, "vitess.errors", json_data['Errors'], TAG_LIST_2)
-    util.create_metric(epoch_time, "vitess.healthcheckErrors", json_data['HealthcheckErrors']
-                       , TAG_LIST_1)
-    util.create_metric(epoch_time, "vitess.infoErrors", json_data['InfoErrors'], TAG_LIST_2)
-    util.create_metric(epoch_time, "vitess.internalErrors", json_data['InternalErrors'], TAG_LIST_2)
-    util.create_metric(epoch_time, "vitess.kills", json_data['Kills'], TAG_LIST_2)
+        # If enabled, track histogram of number of results returned from user queries
+        if self.include_results_histogram:
+            self.process_histogram(json_data, 'Results')
 
-    util.publish_metric(epoch_time, "vitess.mysql.totalCount", json_data['MySQL']['TotalCount'],'gauge', None)
-    util.create_metric_histogram(epoch_time, "vitess.mysql.count", json_data['MySQL'], TAG_LIST_5)
+        # Counters tagged by type, for tracking various error modes of the vttablet
+        for metric in ['Errors', 'InfoErrors', 'InternalErrors', 'Kills']:
+            self.process_metric(json_data, metric, 'counter', parse_tags=['type'])
 
-    util.publish_metric(epoch_time, "vitess.mysqlApp.totalCount", json_data['MysqlApp']['TotalCount']
-                        ,'gauge', None)
-    util.create_metric_histogram(epoch_time, "vitess.mysqlApp.count", json_data['MysqlApp']
-                                 , TAG_LIST_5)
+        # Counters tagged by table and type, for tracking counts of the various query types, times, and ways in which a query can fail
+        # all broken down by table
+        for metric in ['QueryCounts', 'QueryErrorCounts', 'QueryRowCounts', 'QueryTimesNs']:
+            alt_name = 'QueryTimes' if metric == 'QueryTimeNs' else None
+            transformer = util.nsToMs if metric == 'QueryTimesNs' else None
+            self.process_metric(json_data, metric, 'counter', alt_name=alt_name, parse_tags=['table', 'type'], transformer=transformer)
 
-    util.publish_metric(epoch_time, "vitess.mysqlDba.totalCount", json_data['MysqlDba']['TotalCount']
-                        ,'gauge', None)
-    util.create_metric_histogram(epoch_time, "vitess.mysqlDba.count", json_data['MysqlDba']
-                                 , TAG_LIST_5)
+        # Tracks data from information_schema about the size of tables
+        for metric in ['DataFree', 'DataLength', 'IndexLength', 'TableRows']:
+            self.process_metric(json_data, metric, 'gauge', parse_tags=['table'])
 
-    util.publish_metric(epoch_time, "vitess.queries.totalCount", json_data['Queries']['TotalCount']
-                        ,'gauge', None)
-    util.create_metric_histogram(epoch_time, "vitess.queries.count", json_data['Queries'], TAG_LIST_2)
+        # Tracks counts and timings of user queries by user, table, and type
+        user_table_tags = ['table', 'user', 'type']
+        self.process_metric(json_data, 'UserTableQueryCount', 'counter', parse_tags=user_table_tags)
+        self.process_metric(json_data, 'UserTableQueryTimesNs', 'counter', alt_name='UserTableQueryTime', parse_tags=user_table_tags, transformer=util.nsToMs)
 
-    util.publish_metric(epoch_time, "vitess.transactions.totalCount"
-                        , json_data['Transactions']['TotalCount'],'gauge', None)
-    util.create_metric_histogram(epoch_time, "vitess.transactions.count", json_data['Transactions']
-                                 , TAG_LIST_2)
+        # Tracks counts and timings of user transactions by user and type
+        user_tx_tags = ['user', 'type']
+        self.process_metric(json_data, 'UserTransactionCount', 'counter', parse_tags=user_tx_tags)
+        self.process_metric(json_data, 'UserTransactionTimesNs', 'counter', alt_name='UserTransactionTime', parse_tags=user_tx_tags, transformer=util.nsToMs)
 
-    util.publish_metric(epoch_time, "vitess.waits.totalCount", json_data['Waits']['TotalCount'],'gauge', None)
-    util.create_metric_histogram(epoch_time, "vitess.waits.count", json_data['Waits'], TAG_LIST_2)
+        # Tracks a variety of metrics for timing of the various layers of execution
+        # MySQL is how long it takes to actually execute in MySQL. While Queries is the total time with vitess overhead
+        # Waits tracks instances where we are able to consolidate identical queries while waiting for a connection
+        self.process_timing_data(json_data, 'MySQL')
+        self.process_timing_data(json_data, 'Queries')
+        self.process_timing_data(json_data, 'Transactions')
+        self.process_timing_data(json_data, 'Waits')
+        if self.include_reparent_timings:
+            self.process_timing_data(json_data, 'ExternalReparents')
+    
+        # MySQL timings above, broken down by user
+        if self.include_per_user_timings:
+            self.process_timing_data(json_data, 'MysqlAllPrivs')
+            self.process_timing_data(json_data, 'MysqlApp')
+            self.process_timing_data(json_data, 'MysqlDba')
 
-    util.publish_metric(epoch_time, "vitess.queryCacheCapacity", json_data['QueryCacheCapacity'],'gauge', None)
-    util.publish_metric(epoch_time, "vitess.queryCacheLength", json_data['QueryCacheLength'],'gauge', None)
-    util.create_metric(epoch_time, "vitess.queryCounts", json_data['QueryCounts'], TAG_LIST_6)
-    util.create_metric(epoch_time, "vitess.queryErrorCounts", json_data['QueryErrorCounts']
-                       , TAG_LIST_6)
-    util.create_metric(epoch_time, "vitess.queryRowCounts", json_data['QueryRowCounts'], TAG_LIST_6)
-    util.create_metric_avg(epoch_time, "vitess.queryAvgTime", json_data['QueryTimesNs']
-                           , json_data['QueryRowCounts'], TAG_LIST_6)
+        # Track usage of Vitess' query PLAN cache
+        self.process_metric(json_data, 'QueryCacheCapacity', 'gauge', alt_name='QueryPlanCacheCapacity')
+        self.process_metric(json_data, 'QueryCacheLength', 'gauge', alt_name='QueryPlanCacheLength')
 
-    util.publish_metric(epoch_time, "vitess.results.count", json_data['Results']['Count'],'gauge', None)
+        # Tracks messages sent and success of delivery for the stream log
+        if self.include_streamlog_stats:
+            self.process_metric(json_data, 'StreamlogSend', 'counter', parse_tags=['log'])
+            parse_tags = ['log', 'subscriber']
+            self.process_metric(json_data, 'StreamlogDelivered', 'counter', parse_tags=parse_tags)
+            self.process_metric(json_data, 'StreamlogDeliveryDroppedMessages', 'counter', parse_tags=parse_tags)
 
-    util.create_metric(epoch_time, "vitess.streamlogDelivered", json_data['StreamlogDelivered']
-                       , TAG_LIST_11)
-    util.create_metric(epoch_time, "vitess.streamlogDeliveryDroppedMessages"
-                       , json_data['StreamlogDeliveryDroppedMessages'], TAG_LIST_2)
-    util.create_metric(epoch_time, "vitess.streamlogSend", json_data['StreamlogSend'], TAG_LIST_2)
-
-    util.create_metric(epoch_time, "vitess.tableACLAllowed", json_data['TableACLAllowed'], TAG_LIST_7)
-    util.create_metric(epoch_time, "vitess.tableACLDenied", json_data['TableACLDenied'], TAG_LIST_7)
-    util.create_metric(epoch_time, "vitess.tableACLPseudoDenied", json_data['TableACLPseudoDenied']
-                       , TAG_LIST_7)
-    util.publish_metric(epoch_time, "vitess.tableACLExemptCount", json_data['TableACLExemptCount']
-                        , 'gauge', None)
-
-    util.create_metric(epoch_time, "vitess.dataFree", json_data['DataFree'], TAG_LIST_10)
-    util.create_metric(epoch_time, "vitess.dataLength", json_data['DataLength'], TAG_LIST_10)
-    util.create_metric(epoch_time, "vitess.tableRows", json_data['TableRows'], TAG_LIST_10)
-
-    util.publish_metric(epoch_time, "vitess.tabletState", json_data['TabletState'],'gauge', None)
-
-    util.create_metric(epoch_time, "vitess.userTableQueryCount", json_data['UserTableQueryCount']
-                       , TAG_LIST_8)
-    util.create_metric_avg(epoch_time, "vitess.userTableQueryAvgTime"
-                           , json_data['UserTableQueryTimesNs'], json_data['UserTableQueryCount']
-                           , TAG_LIST_8)
-    util.create_metric(epoch_time, "vitess.userTransactionCount", json_data['UserTransactionCount']
-                       , TAG_LIST_9)
-    util.create_metric_avg(epoch_time, "vitess.userTransactionAvgTime"
-                           , json_data['UserTransactionTimesNs'], json_data['UserTransactionCount']
-                           , TAG_LIST_9)
-
-def read_callback():
-    url = "http://" + VITESS_CONFIG['Host'] + \
-          ":" + str(VITESS_CONFIG['Port']) + "/debug/vars"
-    json_data = util.get_json_data(url)
-    process_data(json_data)
-
-def configure_callback(conf):
-
-    global VITESS_CONFIG
-    for node in conf.children:
-        if node.key in VITESS_CONFIG:
-            VITESS_CONFIG[node.key] = node.values[0]
-
-    VITESS_CONFIG['Port']    = int(VITESS_CONFIG['Port'])
+        # Tracks the impact of ACLs on user queries
+        if self.include_acl_stats:
+            acl_tags = ['table', 'plan', 'id', 'user']
+            self.process_metric(json_data, 'TableACLAllowed', 'counter', parse_tags=acl_tags)
+            self.process_metric(json_data, 'TableACLDenied', 'counter', parse_tags=acl_tags)
+            self.process_metric(json_data, 'TableACLPseudoDenied', 'counter', parse_tags=acl_tags)
+            # Super users are exempt and are tracked by this
+            self.process_metric(json_data, 'TableACLExemptCount', 'counter')
+        
+    def process_pool_data(self, json_data, pool_name):
+        self.process_metric(json_data, '%sPoolAvailable' % pool_name, 'gauge')
+        self.process_metric(json_data, '%sPoolCapacity' % pool_name, 'gauge')
+        self.process_metric(json_data, '%sPoolWaitCount' % pool_name, 'counter')
+        self.process_metric(json_data, '%sPoolWaitTime' % pool_name, 'counter', transformer=util.nsToMs)
 
 if __name__ == '__main__':
-    collectd.register_read(read_callback)
-    collectd.register_config(configure_callback)
-
+    util.run_local(NAME, Vttablet)
 else:
     import collectd
-    collectd.register_config(configure_callback)
-    collectd.register_read(read_callback)
+    vt = Vttablet(collectd)
+    collectd.register_config(vt.configure_callback)
