@@ -361,7 +361,7 @@ class BaseCollector(object):
 
                     self.process_histogram(timing_values['Histograms'], key, prefix=timing_name, alt_name="", suffix="Time", tags=tags, key_transformer=nsKeysToMs)
         except KeyError, e:
-            print "[KeyError] process_timing_data: Failed to get metric_name '%s' from json data. Skipping." % timing_name
+            logger.warning("[KeyError] process_timing_data: Failed to get timing_name '%s' from json data. Skipping." % timing_name)
 
     def process_histogram(self, json_data, metric_name, prefix="", alt_name=None, suffix="", key_transformer=None, tags=None):
         try:
@@ -375,7 +375,7 @@ class BaseCollector(object):
 
                 self.emitter.emit("%s%s%sHistogram.%s" % (prefix, alt_name if alt_name is not None else upperSnakeToCamel(metric_name), suffix, key), value, 'gauge', tags)
         except KeyError, e:
-            print "[KeyError] process_histogram: Failed to get metric_name '%s' from json data. Skipping." % metric_name
+            logger.warning("[KeyError] process_histogram: Failed to get metric_name '%s' from json data. Skipping." % metric_name)
 
     def process_metric(self, json_data, metric_name, type, prefix="", alt_name=None, base_tags=dict(), parse_tags=dict(), transformer=None):
         try:
@@ -386,7 +386,7 @@ class BaseCollector(object):
                     value = transformer(value)
                 self.emitter.emit("%s%s" % (prefix, alt_name if alt_name else metric_name), value, type, None if not len(all_tags) else all_tags)
         except KeyError, e:
-            print "[KeyError] process_metric: Failed to get metric_name '%s' from json data. Skipping." % metric_name
+            logger.warning("[KeyError] process_metric: Failed to get metric_name '%s' from json data. Skipping." % metric_name)
 
     def _extract_values(self, json_data, metric_name, parse_tags):
         if parse_tags:
