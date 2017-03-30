@@ -380,7 +380,7 @@ class BaseCollector(object):
                     value = transformer(value)
                 self.emitter.emit("%s%s" % (prefix, alt_name if alt_name else metric_name), value, type, None if not len(all_tags) else all_tags)
         except KeyError, e:
-            print "[KeyError] process_metric: Failed to get metric_name '%v' from json data. Skipping." % metric_name
+            print "[KeyError] process_metric: Failed to get metric_name '%s' from json data. Skipping." % metric_name
 
     def _extract_values(self, json_data, metric_name, parse_tags):
         if parse_tags:
