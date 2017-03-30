@@ -361,7 +361,7 @@ class BaseCollector(object):
 
                     self.process_histogram(timing_values['Histograms'], key, prefix=timing_name, alt_name="", suffix="Time", tags=tags, key_transformer=nsKeysToMs)
         except KeyError, e:
-            print "[KeyError] process_timing_data: Failed to get metric_name '%s' from json data. Skipping." % metric_name
+            print "[KeyError] process_timing_data: Failed to get metric_name '%s' from json data. Skipping." % timing_name
 
     def process_histogram(self, json_data, metric_name, prefix="", alt_name=None, suffix="", key_transformer=None, tags=None):
         try:
