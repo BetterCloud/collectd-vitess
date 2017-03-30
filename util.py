@@ -338,38 +338,44 @@ class BaseCollector(object):
         self.process_data(json)
 
     def process_timing_data(self, json_data, timing_name, parse_tags=None):
-        timing_values = json_data[timing_name]
-        self.process_metric(timing_values, 'TotalCount', 'counter', prefix=timing_name)
-        self.process_metric(timing_values, 'TotalTime', 'counter', prefix=timing_name, transformer=nsToMs)
+        try:
+            timing_values = json_data[timing_name]
+            self.process_metric(timing_values, 'TotalCount', 'counter', prefix=timing_name)
+            self.process_metric(timing_values, 'TotalTime', 'counter', prefix=timing_name, transformer=nsToMs)
 
-        for key, histogram in timing_values['Histograms'].items():
-            if parse_tags:
-                tags = _extract_tags(key, tag_list=parse_tags)
-                prefix = timing_name
-            else:
-                tags = None
-                prefix = "%s%s" % (timing_name, upperSnakeToCamel(key))
-            self.process_metric(histogram, 'Count', 'counter', prefix=prefix, base_tags=tags)
-            self.process_metric(histogram, 'Time', 'counter', prefix=prefix, base_tags=tags, transformer=nsToMs)
+            for key, histogram in timing_values['Histograms'].items():
+                if parse_tags:
+                    tags = _extract_tags(key, tag_list=parse_tags)
+                    prefix = timing_name
+                else:
+                    tags = None
+                    prefix = "%s%s" % (timing_name, upperSnakeToCamel(key))
+                self.process_metric(histogram, 'Count', 'counter', prefix=prefix, base_tags=tags)
+                self.process_metric(histogram, 'Time', 'counter', prefix=prefix, base_tags=tags, transformer=nsToMs)
 
-            if self.include_timing_histograms:
-                def nsKeysToMs(key):
-                    if key.isdigit():
-                        return "%d" % nsToMs(long(key))
-                    return key
+                if self.include_timing_histograms:
+                    def nsKeysToMs(key):
+                        if key.isdigit():
+                            return "%d" % nsToMs(long(key))
+                        return key
 
-                self.process_histogram(timing_values['Histograms'], key, prefix=timing_name, alt_name="", suffix="Time", tags=tags, key_transformer=nsKeysToMs)
+                    self.process_histogram(timing_values['Histograms'], key, prefix=timing_name, alt_name="", suffix="Time", tags=tags, key_transformer=nsKeysToMs)
+        except KeyError, e:
+            print "[KeyError] process_timing_data: Failed to get metric_name '%s' from json data. Skipping." % metric_name
 
     def process_histogram(self, json_data, metric_name, prefix="", alt_name=None, suffix="", key_transformer=None, tags=None):
-        histogram = json_data[metric_name]
+        try:
+            histogram = json_data[metric_name]
 
-        for key, value in histogram.items():
-            if key == "Time":
-                value = nsToMs(value)
-            if key_transformer:
-                key = key_transformer(key)
+            for key, value in histogram.items():
+                if key == "Time":
+                    value = nsToMs(value)
+                if key_transformer:
+                    key = key_transformer(key)
 
-            self.emitter.emit("%s%s%sHistogram.%s" % (prefix, alt_name if alt_name is not None else upperSnakeToCamel(metric_name), suffix, key), value, 'gauge', tags)
+                self.emitter.emit("%s%s%sHistogram.%s" % (prefix, alt_name if alt_name is not None else upperSnakeToCamel(metric_name), suffix, key), value, 'gauge', tags)
+        except KeyError, e:
+            print "[KeyError] process_histogram: Failed to get metric_name '%s' from json data. Skipping." % metric_name
 
     def process_metric(self, json_data, metric_name, type, prefix="", alt_name=None, base_tags=dict(), parse_tags=dict(), transformer=None):
         try:
