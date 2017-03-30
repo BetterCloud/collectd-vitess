@@ -10,6 +10,9 @@ import logging
 import re
 import mock
 
+MAX_ATTEMPTS = 6
+SLEEP_TIME = 10
+
 class CollectdLogHandler(logging.Handler):
     """Log handler to forward statements to collectd
     A custom log handler that forwards log messages raised
@@ -241,7 +244,7 @@ class UrlJsonProvider(JsonProvider):
         url = "http://%s:%s%s" % (self.host, self.port, self.path)
         return self._fetch(url)
 
-    def _fetch(self, url):
+    def _fetch(self, url, attempt=1):
         response = None
         try:
             logger.info('Fetching api information from: %s' % url)
@@ -250,8 +253,11 @@ class UrlJsonProvider(JsonProvider):
             logger.debug('Raw api response: %s' % response)
             return json.load(response)
         except (urllib2.URLError, urllib2.HTTPError), e:
-            logger.error('Error connecting to %s - %r : %s' % (url, e, e))
-            return None
+            if attempt <= MAX_ATTEMPTS:
+                logger.warning("Failed to get json data. Retrying in %ds" % SLEEP_TIME)
+                time.sleep(SLEEP_TIME)
+                return self._fetch(url, attempt + 1)
+            raise
         finally:
             if response:
                 response.close()
