@@ -195,7 +195,7 @@ def extract_tagged_values(data, name, key_split_char='.', tag_list=None):
 
 def _extract_tagged_value(name, value, key_split_char, tag_list):
     return (_extract_tags(name, key_split_char, tag_list), value)
-    
+
 def _extract_tags(name, key_split_char='.', tag_list=None):
     if not tag_list:
         return dict()
@@ -330,7 +330,7 @@ class BaseCollector(object):
     def read_callback(self):
         json = self.json_provider.get_json()
         self.process_data(json)
-        
+
     def process_timing_data(self, json_data, timing_name, parse_tags=None):
         timing_values = json_data[timing_name]
         self.process_metric(timing_values, 'TotalCount', 'counter', prefix=timing_name)
@@ -353,7 +353,7 @@ class BaseCollector(object):
                     return key
 
                 self.process_histogram(timing_values['Histograms'], key, prefix=timing_name, alt_name="", suffix="Time", tags=tags, key_transformer=nsKeysToMs)
-            
+
     def process_histogram(self, json_data, metric_name, prefix="", alt_name=None, suffix="", key_transformer=None, tags=None):
         histogram = json_data[metric_name]
 
@@ -366,18 +366,21 @@ class BaseCollector(object):
             self.emitter.emit("%s%s%sHistogram.%s" % (prefix, alt_name if alt_name is not None else upperSnakeToCamel(metric_name), suffix, key), value, 'gauge', tags)
 
     def process_metric(self, json_data, metric_name, type, prefix="", alt_name=None, base_tags=dict(), parse_tags=dict(), transformer=None):
-        for tags, value in self._extract_values(json_data, metric_name, parse_tags):
-            all_tags = base_tags.copy() if base_tags else dict()
-            all_tags.update(tags)
-            if transformer:
-                value = transformer(value)
-            self.emitter.emit("%s%s" % (prefix, alt_name if alt_name else metric_name), value, type, None if not len(all_tags) else all_tags)
+        try:
+            for tags, value in self._extract_values(json_data, metric_name, parse_tags):
+                all_tags = base_tags.copy() if base_tags else dict()
+                all_tags.update(tags)
+                if transformer:
+                    value = transformer(value)
+                self.emitter.emit("%s%s" % (prefix, alt_name if alt_name else metric_name), value, type, None if not len(all_tags) else all_tags)
+        except KeyError, e:
+            print "[KeyError] process_metric: Failed to get metric_name '%v' from json data. Skipping." % metric_name
 
     def _extract_values(self, json_data, metric_name, parse_tags):
         if parse_tags:
             return extract_tagged_values(json_data, metric_name, tag_list=parse_tags)
         return default_extractor(json_data, metric_name)
-    
+
 # For running locally, creates some mocks of collectd and allows passing arguments from the command line
 def run_local(name, collector):
     import argparse, sys
@@ -413,4 +416,3 @@ def run_local(name, collector):
             sys.exit(0)
         else:
             time.sleep(interval)
-                
