@@ -13,6 +13,7 @@ class Vttablet(util.BaseCollector):
         self.include_acl_stats = True
         self.include_results_histogram = True
         self.include_reparent_timings = True
+        self.include_heartbeat = False
 
     def configure_callback(self, conf):
         super(Vttablet, self).configure_callback(conf)
@@ -27,6 +28,8 @@ class Vttablet(util.BaseCollector):
                 self.include_acl_stats = util.boolval(node.values[0])
             elif node.key == 'IncludeExternalReparentTimings':
                 self.include_reparent_timings = util.boolval(node.values[0])
+            elif node.key == 'IncludeHeartbeat':
+                self.include_heartbeat = util.boolval(node.values[0])
 
         self.register_read_callback()
 
@@ -118,6 +121,13 @@ class Vttablet(util.BaseCollector):
             self.process_metric(json_data, 'TableACLPseudoDenied', 'counter', parse_tags=acl_tags)
             # Super users are exempt and are tracked by this
             self.process_metric(json_data, 'TableACLExemptCount', 'counter')
+
+        if self.include_heartbeat:
+            self.process_metric(json_data, 'HeartbeatCumulativeLagNs', 'counter')
+            self.process_metric(json_data, 'HeartbeatReads', 'counter')
+            self.process_metric(json_data, 'HeartbeatReadErrors', 'counter')
+            self.process_metric(json_data, 'HeartbeatWrites', 'counter')
+            self.process_metric(json_data, 'HeartbeatWriteErrors', 'counter')
 
     def process_pool_data(self, json_data, pool_name):
         self.process_metric(json_data, '%sPoolAvailable' % pool_name, 'gauge')
