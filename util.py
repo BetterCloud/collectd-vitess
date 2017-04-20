@@ -202,12 +202,29 @@ def _extract_tagged_value(name, value, key_split_char, tag_list):
 def _extract_tags(name, key_split_char='.', tag_list=None):
     if not tag_list:
         return dict()
-    tag_data = [x.replace(" ", "_") for x in name.split(key_split_char)]
+    tag_data = []
+    try:
+        # this is obviously a bit hacky, but our user names have periods in them
+        idx = tag_list.index('user')
+        if idx == 0:
+            # split from right
+            tag_data = name.rsplit(key_split_char, len(tag_list) - 1)
+        elif idx == len(tag_list) - 1:
+            # split from left
+            tag_data = name.split(key_split_char, len(tag_list) - 1)
+        else:
+            # limited split from left
+            lparts = name.split(key_split_char, idx)
+            # limited split of remainder from right
+            rparts = lparts[idx].rsplit(key_split_char, len(tag_list) - idx - idx)
+            tag_data = lparts[:idx]
+            tag_data += rparts
+    except:
+        tag_data = name.split(key_split_char)
+
     if len(tag_data) != len(tag_list):
         raise Exception("Data not as expected for " + name + " tag list: " + str(tag_list))
-
-    tags = dict(zip(tag_list, tag_data))
-    return tags
+    return dict(zip(tag_list, [x.replace(" ", "_") for x in tag_data]))
 
 
 def default_extractor(data, name):
