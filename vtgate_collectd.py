@@ -32,8 +32,8 @@ class Vtgate(util.BaseCollector):
 
         # GC Stats
         memstats = json_data['memstats']
-        self.process_metric(memstats, 'GCCPUFraction', 'gauge', prefix='GC.', alt_name='CPUFraction')
-        self.process_metric(memstats, 'PauseTotalNs', 'gauge', prefix='GC.')
+        self.process_metric(memstats, 'GCCPUFraction', 'counter', prefix='GC.', alt_name='CPUFraction')
+        self.process_metric(memstats, 'PauseTotalNs', 'counter', prefix='GC.')
 
         # We should endeavor to have 0 statements that are unfriendly to filtered replication for any keyspaces that want to be sharded
         self.process_metric(json_data, 'FilteredReplicationUnfriendlyStatementsCount', 'counter')
@@ -44,20 +44,18 @@ class Vtgate(util.BaseCollector):
         self.process_rates(json_data, 'ErrorsByDbType', 'DbType')
         self.process_rates(json_data, 'ErrorsByKeyspace', 'Keyspace')
         self.process_rates(json_data, 'ErrorsByOperation', 'Operation')
+        self.process_rates(json_data, 'ErrorsByCode', 'Code')
 
         # Subtracting VtgateApi from VttabletCall times below should allow seeing what overhead vtgate adds
         parse_tags = ['Operation', 'Keyspace', 'DbType']
         self.process_timing_data(json_data, 'VtgateApi', parse_tags=parse_tags)
+        parse_tags = ['Operation', 'Keyspace', 'DbType', 'Code']
         self.process_metric(json_data, 'VtgateApiErrorCounts', 'counter', parse_tags=parse_tags)
 
-        parse_tags = ['type']
-        self.process_metric(json_data, 'VtgateInfoErrorCounts', 'counter', parse_tags=parse_tags)
-        self.process_metric(json_data, 'VtgateInternalErrorCounts', 'counter', parse_tags=parse_tags)
-        
         parse_tags = ['Operation', 'Keyspace', 'ShardName', 'DbType']
         self.process_metric(json_data, 'VttabletCallErrorCount', 'counter', parse_tags=parse_tags)
         self.process_timing_data(json_data, 'VttabletCall', parse_tags=parse_tags)
-        
+
         parse_tags = ['Keyspace', 'ShardName']
         self.process_metric(json_data, 'BufferUtilizationSum', 'counter', parse_tags=parse_tags)
         self.process_metric(json_data, 'BufferStarts', 'counter', parse_tags=parse_tags)

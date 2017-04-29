@@ -47,8 +47,8 @@ class Vttablet(util.BaseCollector):
 
         # GC Stats
         memstats = json_data['memstats']
-        self.process_metric(memstats, 'GCCPUFraction', 'gauge', prefix='GC.', alt_name='CPUFraction')
-        self.process_metric(memstats, 'PauseTotalNs', 'gauge', prefix='GC.')
+        self.process_metric(memstats, 'GCCPUFraction', 'counter', prefix='GC.', alt_name='CPUFraction')
+        self.process_metric(memstats, 'PauseTotalNs', 'counter', prefix='GC.')
 
         # Tracking usage of the various connection pools
         self.process_pool_data(json_data, 'Conn')
@@ -62,7 +62,7 @@ class Vttablet(util.BaseCollector):
             self.process_histogram(json_data, 'Results')
 
         # Counters tagged by type, for tracking various error modes of the vttablet
-        for metric in ['Errors', 'InfoErrors', 'InternalErrors', 'Kills']:
+        for metric in ['Errors', 'InternalErrors', 'Kills']:
             self.process_metric(json_data, metric, 'counter', parse_tags=['type'])
 
         # Counters tagged by table and type, for tracking counts of the various query types, times, and ways in which a query can fail
@@ -89,7 +89,7 @@ class Vttablet(util.BaseCollector):
         # Tracks a variety of metrics for timing of the various layers of execution
         # MySQL is how long it takes to actually execute in MySQL. While Queries is the total time with vitess overhead
         # Waits tracks instances where we are able to consolidate identical queries while waiting for a connection
-        self.process_timing_data(json_data, 'MySQL')
+        self.process_timing_data(json_data, 'Mysql')
         self.process_timing_data(json_data, 'Queries')
         self.process_timing_data(json_data, 'Transactions')
         self.process_timing_data(json_data, 'Waits')
