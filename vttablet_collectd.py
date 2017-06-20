@@ -121,6 +121,10 @@ class Vttablet(util.BaseCollector):
             self.process_metric(json_data, 'TableACLPseudoDenied', 'counter', parse_tags=acl_tags)
             # Super users are exempt and are tracked by this
             self.process_metric(json_data, 'TableACLExemptCount', 'counter')
+            # Look for DDL executed by users not in migration group
+            for tags, value in self._extract_values(json_data, 'TableACLAllowed', acl_tags):
+                if tags['id'] == "DDL" and not tags['user'].startswith('migration.'):
+                    self.emitter.emit("UnprivilegedDDL", value, 'counter', tags)
 
         if self.include_heartbeat:
             self.process_metric(json_data, 'HeartbeatCumulativeLagNs', 'counter')
