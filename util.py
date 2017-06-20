@@ -189,7 +189,7 @@ def extract_tagged_values(data, name, key_split_char='.', tag_list=None):
         return [(dict(), value) for value in values.values()]
 
     if type(values) is not dict:
-        return (_extract_tags(name, key_split_char, tag_list), values)
+        return [(_extract_tags(name, key_split_char, tag_list), values)]
 
     result = []
     for key, value in values.items():
