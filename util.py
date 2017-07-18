@@ -9,6 +9,7 @@ import os
 import logging
 import re
 import mock
+import re
 
 MAX_ATTEMPTS = 6
 SLEEP_TIME = 10
@@ -201,26 +202,21 @@ def _extract_tags(name, key_split_char='.', tag_list=None):
         return dict()
     tag_data = []
     try:
-        # this is obviously a bit hacky, but our user names have periods in them
-        idx = tag_list.index('user')
-        if idx == 0:
-            # split from right
-            tag_data = name.rsplit(key_split_char, len(tag_list) - 1)
-        elif idx == len(tag_list) - 1:
-            # split from left
-            tag_data = name.split(key_split_char, len(tag_list) - 1)
+        if key_split_char == '.' or key_split_char == '\\':
+            # names may have escaped periods or slashes, i.e. in usernames, like Foo-web.hs-foo.vitess
+            # in that case, vitess escapes them with a backslash. We don't want to count those escaped characters
+            # when splitting. This regex only splits on non-escaped periods/slashes.
+            tag_data = re.split(r'(?<!\\)%s' % re.escape(key_split_char), name)
+            # Unescape them.
+            tag_data[-1] = tag_data[-1].replace(r'\.', '.').replace(r'\\', '\\')
         else:
-            # limited split from left
-            lparts = name.split(key_split_char, idx)
-            # limited split of remainder from right
-            rparts = lparts[idx].rsplit(key_split_char, len(tag_list) - idx - idx)
-            tag_data = lparts[:idx]
-            tag_data += rparts
+            # Otherwise just do a straight split.
+            tag_data = name.split(key_split_char)
     except:
         tag_data = name.split(key_split_char)
 
     if len(tag_data) != len(tag_list):
-        raise Exception("Data not as expected for " + name + " tag list: " + str(tag_list))
+        raise Exception("Data not as expected for %s tag list: %s; data: %s" % (name, str(tag_list), str(tag_data)))
     return dict(zip(tag_list, [x.replace(" ", "_") for x in tag_data]))
 
 
