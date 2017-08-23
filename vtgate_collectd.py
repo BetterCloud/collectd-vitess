@@ -1,77 +1,90 @@
 #!/usr/bin/python
 
+#!/usr/bin/python
+
+import time
 import util
-import collectd
+import mock
 
-TAG_LIST_1 = ['keyspace', 'shard', 'type']
-TAG_LIST_2 = ['type']
-TAG_LIST_3 = ['method', 'keyspace', 'shard', 'type']
-TAG_LIST_4 = ['method', 'keyspace', 'type']
+NAME = 'vtgate'
 
-VITESS_CONFIG = {
-    'Host':           'localhost',
-    'Port':           15001,
-}
+class Vtgate(util.BaseCollector):
+    def __init__(self, collectd, json_provider=None, verbose=False, interval=None):
+        super(Vtgate, self).__init__(collectd, NAME, 15001, json_provider, verbose, interval)
 
-def process_data(json_data):
-    epoch_time = util.get_epoch_time()
+    def configure_callback(self, conf):
+        super(Vtgate, self).configure_callback(conf)
 
-    util.create_metric(epoch_time, "vitess.healthcheckConnections", json_data['HealthcheckConnections']
-                       , TAG_LIST_1)
+        for node in conf.children:
+            pass
 
-    util.create_metric(epoch_time, "vitess.healthcheckErrors", json_data['HealthcheckErrors']
-                       , TAG_LIST_1)
+        self.register_read_callback()
 
-    util.create_metric(epoch_time, "vitess.vtgateApiErrorCounts", json_data['VtgateApiErrorCounts']
-                       , TAG_LIST_4)
+    def process_data(self, json_data):
+        # Current connections and total accepted
+        self.process_metric(json_data, 'ConnAccepted', 'counter')
+        self.process_metric(json_data, 'ConnCount', 'gauge')
 
-    util.create_metric(epoch_time, "vitess.vtgateApiRowsReturned", json_data['VtgateApiRowsReturned']
-                       , TAG_LIST_4)
+        # healthcheck metrics, both errors and connections
+        hc_tags = ['keyspace', 'shard', 'type']
+        self.process_metric(json_data, 'HealthcheckErrors', 'counter', parse_tags=hc_tags)
+        self.process_metric(json_data, 'HealthcheckConnections', 'gauge', parse_tags=hc_tags)
 
-    util.create_metric(epoch_time, "vitess.vtgateInfoErrorCounts", json_data['VtgateInfoErrorCounts']
-                       , TAG_LIST_2)
+        # GC Stats
+        memstats = json_data['memstats']
+        self.process_metric(memstats, 'GCCPUFraction', 'counter', prefix='GC.', alt_name='CPUFraction')
+        self.process_metric(memstats, 'PauseTotalNs', 'counter', prefix='GC.')
 
-    util.create_metric(epoch_time, "vitess.vtgateInternalErrorCounts"
-                       , json_data['VtgateInternalErrorCounts'], TAG_LIST_2)
+        # We should endeavor to have 0 statements that are unfriendly to filtered replication for any keyspaces that want to be sharded
+        self.process_metric(json_data, 'FilteredReplicationUnfriendlyStatementsCount', 'counter')
 
-    util.create_metric(epoch_time, "vitess.vttabletCallErrorCount", json_data['VttabletCallErrorCount']
-                       , TAG_LIST_3)
+        self.process_rates(json_data, 'QPSByDbType', 'DbType')
+        self.process_rates(json_data, 'QPSByKeyspace', 'Keyspace')
+        self.process_rates(json_data, 'QPSByOperation', 'Operation')
+        self.process_rates(json_data, 'ErrorsByDbType', 'DbType')
+        self.process_rates(json_data, 'ErrorsByKeyspace', 'Keyspace')
+        self.process_rates(json_data, 'ErrorsByOperation', 'Operation')
+        self.process_rates(json_data, 'ErrorsByCode', 'Code')
 
-    util.publish_metric(epoch_time, "vitess.vtgateApi.totalCount", json_data['VtgateApi']['TotalCount']
-                        , 'gauge', None)
+        # Subtracting VtgateApi from VttabletCall times below should allow seeing what overhead vtgate adds
+        parse_tags = ['Operation', 'Keyspace', 'DbType']
+        self.process_timing_data(json_data, 'VtgateApi', parse_tags=parse_tags)
+        parse_tags = ['Operation', 'Keyspace', 'DbType', 'Code']
+        self.process_metric(json_data, 'VtgateApiErrorCounts', 'counter', parse_tags=parse_tags)
 
-    util.publish_metric(epoch_time, "vitess.vtgateApi.latency", (long(json_data['VtgateApi']['TotalTime'])/(long(json_data['VtgateApi']['TotalCount']) * 1000000000))
-                        ,'gauge', None)
+        parse_tags = ['Operation', 'Keyspace', 'ShardName', 'DbType']
+        self.process_metric(json_data, 'VttabletCallErrorCount', 'counter', parse_tags=parse_tags)
+        self.process_timing_data(json_data, 'VttabletCall', parse_tags=parse_tags)
 
-    util.create_metric_histogram(epoch_time, "vitess.vtgateApi.count", json_data['VtgateApi']
-                                 , TAG_LIST_4)
+        parse_tags = ['Keyspace', 'ShardName']
+        self.process_metric(json_data, 'BufferUtilizationSum', 'counter', parse_tags=parse_tags)
+        self.process_metric(json_data, 'BufferStarts', 'counter', parse_tags=parse_tags)
+        self.process_metric(json_data, 'BufferRequestsBuffered', 'counter', parse_tags=parse_tags)
+        self.process_metric(json_data, 'BufferRequestsDrained', 'counter', parse_tags=parse_tags)
 
-    util.publish_metric(epoch_time, "vitess.vttabletCall.totalCount"
-                        , json_data['VttabletCall']['TotalCount'], 'gauge', None)
+        parse_tags = ['Keyspace', 'ShardName', 'Reason']
+        self.process_metric(json_data, 'BufferRequestsEvicted', 'counter', parse_tags=parse_tags)
+        self.process_metric(json_data, 'BufferRequestsSkipped', 'counter', parse_tags=parse_tags)
 
-    util.create_metric_histogram(epoch_time, "vitess.vttabletCall.count", json_data['VttabletCall']
-                                 , TAG_LIST_3)
+    def process_rates(self, json_data, metric_name, tag_name):
+        rates = json_data[metric_name]
 
-def read_callback():
-    url = "http://" + VITESS_CONFIG['Host'] + \
-          ":" + str(VITESS_CONFIG['Port']) + "/debug/vars"
-    json_data = util.get_json_data(url)
-    process_data(json_data)
+        for key, values in rates.items():
+            if key.lower() == "all":
+                continue
+            oneMin = values[-1]
+            fiveMin = sum(values[-5:])/5
+            fifteenMin = sum(values[-15:])/15
 
-def configure_callback(conf):
-
-    global VITESS_CONFIG
-    for node in conf.children:
-        if node.key in VITESS_CONFIG:
-            VITESS_CONFIG[node.key] = node.values[0]
-
-    VITESS_CONFIG['Port']    = int(VITESS_CONFIG['Port'])
+            tags = dict()
+            tags[tag_name] = key
+            self.emitter.emit("vitess.%s.1min" % metric_name, oneMin, 'gauge', tags)
+            self.emitter.emit("vitess.%s.5min" % metric_name, fiveMin, 'gauge', tags)
+            self.emitter.emit("vitess.%s.15min" % metric_name, fifteenMin, 'gauge', tags)
 
 if __name__ == '__main__':
-    collectd.register_read(read_callback)
-    collectd.register_config(configure_callback)
-
+    util.run_local(NAME, Vtgate)
 else:
     import collectd
-    collectd.register_config(configure_callback)
-    collectd.register_read(read_callback)
+    vt = Vtgate(collectd)
+    collectd.register_config(vt.configure_callback)
